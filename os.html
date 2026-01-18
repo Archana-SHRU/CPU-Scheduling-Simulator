@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CPU Scheduling Simulator</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // Tailwind Configuration
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: '#10b981', // emerald-500
+                        secondary: '#3b82f6', // blue-500
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom styling for the Gantt chart segments */
+        .gantt-segment {
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 40px;
+            min-height: 40px; /* Ensure height for mobile view */
+            font-size: 14px;
+            font-weight: bold;
+            color: white;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            border-right: 1px solid rgba(0, 0, 0, 0.2); 
+            box-shadow: 1px 0 3px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Ensure responsive input width */
+        .process-input {
+            width: 100%;
+            min-width: 60px;
+        }
+
+        /* Responsive timeline */
+        #gantt-time-line div {
+            flex-shrink: 0;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen p-4 font-sans text-gray-800">
+
+    <div class="max-w-5xl mx-auto bg-white shadow-2xl rounded-xl p-6 md:p-10">
+
+        <h1 class="text-3xl md:text-4xl font-extrabold text-center text-secondary mb-8 border-b-4 border-primary pb-2">
+            CPU Scheduling Simulator
+        </h1>
+
+        <!-- 1. Algorithm Selection, Quantum, and N Input -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <div class="md:col-span-2">
+                <label for="algorithm" class="block text-sm font-medium text-gray-700 mb-1">Select Algorithm:</label>
+                <select id="algorithm" onchange="toggleQuantumAndPriorityInputs()" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary">
+                    <option value="FCFS">FCFS (First Come First Serve)</option>
+                    <option value="SJF">SJF (Shortest Job First - Non-Preemptive)</option>
+                    <option value="Priority">Priority (Non-Preemptive)</option>
+                    <option value="RR">Round Robin</option>
+                </select>
+            </div>
+
+            <div id="quantum-input-container" class="hidden">
+                <label for="quantum" class="block text-sm font-medium text-gray-700 mb-1">Time Quantum (Q):</label>
+                <input type="number" id="quantum" value="4" min="1" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary">
+            </div>
+
+            <!-- Input for Number of Processes (N) -->
+            <div class="md:col-span-1">
+                <label for="num-processes-input" class="block text-sm font-medium text-gray-700 mb-1">Number of Processes (N):</label>
+                <input type="number" id="num-processes-input" value="3" min="1" max="10" 
+                       onchange="adjustProcessRows(this.value)"
+                       class="w-full p-2 border border-gray-300 rounded-lg font-bold text-center focus:ring-secondary focus:border-secondary">
+            </div>
+        </div>
+
+        <!-- 2. Process Input Form -->
+        <h2 class="text-2xl font-semibold text-gray-700 mb-4 border-l-4 border-secondary pl-2">Process Input Details</h2>
+        <div class="overflow-x-auto mb-6">
+            <!-- IMPORTANT FIX: Added min-width style to ensure horizontal layout on mobile -->
+            <table class="divide-y divide-gray-200" style="min-width: 500px;">
+                <thead class="bg-gray-100">
+                    <tr>
+                        <!-- FIX: Added whitespace-nowrap to all <th> elements to prevent wrapping -->
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap">PID</th>
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap">Arrival Time (AT)</th>
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap">Burst Time (BT)</th>
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" id="priority-header">Priority</th>
+                        <th class="px-3 py-3"></th>
+                    </tr>
+                </thead>
+                <tbody id="process-table-body" class="bg-white divide-y divide-gray-200">
+                    <!-- Process rows will be generated here by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+
+        <div class="flex justify-center mb-8">
+            <button onclick="startSimulation()" class="w-full md:w-1/2 bg-secondary hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg shadow-xl transition duration-200 transform hover:scale-[1.02]">
+                Start Simulation
+            </button>
+        </div>
+        
+        <!-- 3. Gantt Chart and Results -->
+        <div id="results-container" class="mt-8 p-6 bg-gray-50 rounded-xl shadow-inner hidden">
+            <h2 class="text-2xl font-semibold text-gray-700 mb-4 border-l-4 border-primary pl-2">Simulation Results</h2>
+            
+            <!-- Gantt Chart -->
+            <h3 class="text-xl font-medium text-gray-600 mb-3">Gantt Chart </h3>
+            <div id="gantt-chart" class="flex flex-row overflow-x-auto mb-1 border border-gray-300 rounded-t-lg">
+                <!-- Gantt chart segments will be inserted here -->
+            </div>
+            <div id="gantt-time-line" class="flex flex-row overflow-x-auto text-xs font-semibold text-gray-700 -mt-0.5">
+                <!-- Time stamps will be inserted here -->
+            </div>
+
+
+            <!-- Metrics -->
+            <h3 class="text-xl font-medium text-gray-600 mb-3 mt-6">Metrics</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
+                <div class="bg-blue-500/10 p-4 rounded-lg shadow">
+                    <p class="text-sm font-medium text-blue-700">Average Waiting Time (AWT)</p>
+                    <p id="avg-waiting-time" class="text-3xl font-bold text-blue-600 mt-1">0.00</p>
+                </div>
+                <div class="bg-primary/10 p-4 rounded-lg shadow">
+                    <p class="text-sm font-medium text-primary">Average Turnaround Time (ATT)</p>
+                    <p id="avg-turnaround-time" class="text-3xl font-bold text-primary mt-1">0.00</p>
+                </div>
+                <div class="bg-yellow-500/10 p-4 rounded-lg shadow">
+                    <p class="text-sm font-medium text-yellow-700">Throughput</p>
+                    <p id="throughput" class="text-3xl font-bold text-yellow-600 mt-1">0.00</p>
+                </div>
+            </div>
+
+            <!-- Process Details Table -->
+            <h3 class="text-xl font-medium text-gray-600 mb-3 mt-6">Process Details</h3>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200 border rounded-lg">
+                    <thead class="bg-gray-200">
+                        <tr>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-700 uppercase whitespace-nowrap">PID</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-700 uppercase whitespace-nowrap">AT</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-700 uppercase whitespace-nowrap">BT</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-700 uppercase whitespace-nowrap">CT</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-700 uppercase whitespace-nowrap">TAT</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-700 uppercase whitespace-nowrap">WT</th>
+                        </tr>
+                    </thead>
+                    <tbody id="details-table-body" class="bg-white divide-y divide-gray-200">
+                        <!-- Process results will be inserted here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Message Box (Alert replacement) -->
+        <div id="message-box" class="fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex items-center justify-center hidden">
+            <div class="bg-white p-6 rounded-lg shadow-2xl max-w-sm w-full">
+                <h3 class="text-lg font-bold text-red-600 mb-3">Error!</h3>
+                <p id="message-content" class="text-gray-700 mb-4"></p>
+                <button onclick="closeMessageBox()" class="w-full bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded transition duration-200">Close</button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Global data structure to hold current process inputs for persistence
+        let currentProcessData = [
+            { at: 0, bt: 10, priority: 3 },
+            { at: 1, bt: 5, priority: 1 },
+            { at: 2, bt: 8, priority: 2 },
+        ];
+        
+        // Mapping for process colors (used in Gantt chart)
+        const colorMap = {};
+        const colors = [
+            '#ef4444', // red-500
+            '#f97316', // orange-500
+            '#eab308', // yellow-500
+            '#22c55e', // green-500
+            '#06b6d4', // cyan-500
+            '#3b82f6', // blue-500
+            '#8b5cf6', // violet-500
+            '#ec4899', // pink-500
+        ];
+
+        /**
+         * Adjusts the number of rows in the input table based on the new count.
+         * @param {string} countString - The new desired number of processes.
+         */
+        function adjustProcessRows(countString) {
+            const newCount = parseInt(countString);
+            const tableBody = document.getElementById('process-table-body');
+
+            if (isNaN(newCount) || newCount < 1 || newCount > 10) {
+                 showMessageBox("Please enter a number between 1 and 10 for the number of processes.");
+                 document.getElementById('num-processes-input').value = currentProcessData.length;
+                 return;
+            }
+            
+            // 1. Capture current values before modification (important for persistence)
+            const inputs = tableBody.querySelectorAll('tr');
+            currentProcessData = [];
+            inputs.forEach((row) => {
+                const at = parseInt(row.querySelector('.at-input').value) || 0;
+                const bt = parseInt(row.querySelector('.bt-input').value) || 1;
+                const priority = parseInt(row.querySelector('.priority-input').value) || 1;
+                currentProcessData.push({ at, bt, priority });
+            });
+            
+            // 2. Clear the table body
+            tableBody.innerHTML = '';
+            
+            // 3. Populate new rows
+            for (let i = 0; i < newCount; i++) {
+                const pid = 'P' + (i + 1);
+                // Use stored data or default values for new rows
+                const data = currentProcessData[i] || { at: 0, bt: 5, priority: 1 }; 
+
+                const newRow = document.createElement('tr');
+                newRow.innerHTML = `
+                    <td class="px-3 py-2 text-sm text-gray-900 font-medium">${pid}</td>
+                    <td class="px-3 py-2"><input type="number" value="${data.at}" min="0" class="process-input border rounded p-1 at-input text-center"></td>
+                    <td class="px-3 py-2"><input type="number" value="${data.bt}" min="1" class="process-input border rounded p-1 bt-input text-center"></td>
+                    <td class="px-3 py-2"><input type="number" value="${data.priority}" min="1" class="process-input border rounded p-1 priority-input text-center"></td>
+                    <td class="px-3 py-2 text-right text-sm font-medium"></td>
+                `;
+                tableBody.appendChild(newRow);
+            }
+            
+            currentProcessData.length = newCount; // Adjust array length
+            togglePriorityInputs();
+        }
+
+        /**
+         * Toggles the visibility of the Priority input column.
+         */
+        function togglePriorityInputs() {
+            const algorithm = document.getElementById('algorithm').value;
+            const priorityHeader = document.getElementById('priority-header');
+            const priorityInputs = document.querySelectorAll('.priority-input');
+
+            const isPriority = (algorithm === 'Priority');
+
+            if (isPriority) {
+                priorityHeader.classList.remove('hidden');
+                priorityInputs.forEach(input => input.closest('td').classList.remove('hidden'));
+            } else {
+                priorityHeader.classList.add('hidden');
+                priorityInputs.forEach(input => input.closest('td').classList.add('hidden'));
+            }
+        }
+
+        /**
+         * Toggles the visibility of the Time Quantum input based on the selected algorithm.
+         */
+        function toggleQuantumAndPriorityInputs() {
+            const algorithm = document.getElementById('algorithm').value;
+            const quantumContainer = document.getElementById('quantum-input-container');
+
+            if (algorithm === 'RR') {
+                quantumContainer.classList.remove('hidden');
+            } else {
+                quantumContainer.classList.add('hidden');
+            }
+            togglePriorityInputs();
+        }
+
+        /**
+         * Reads all input processes from the table and performs validation.
+         * @returns {Array|null} Processes array or null if validation fails.
+         */
+        function getProcessesFromInput() {
+            const rows = document.getElementById('process-table-body').querySelectorAll('tr');
+            const processes = [];
+            const selectedAlgorithm = document.getElementById('algorithm').value;
+            
+            for (let i = 0; i < rows.length; i++) {
+                const row = rows[i];
+                const pid = row.querySelector('td:nth-child(1)').textContent;
+                const at = parseInt(row.querySelector('.at-input').value);
+                const bt = parseInt(row.querySelector('.bt-input').value);
+                const priority = parseInt(row.querySelector('.priority-input').value);
+
+                // Input validation checks
+                if (isNaN(at) || at < 0) {
+                    showMessageBox(`Invalid Arrival Time for ${pid}. AT must be >= 0.`); return null;
+                }
+                if (isNaN(bt) || bt <= 0) {
+                    showMessageBox(`Invalid Burst Time for ${pid}. BT must be > 0.`); return null;
+                }
+                if (selectedAlgorithm === 'Priority' && (isNaN(priority) || priority < 1)) {
+                    showMessageBox(`Invalid Priority for ${pid}. Priority must be > 0.`); return null;
+                }
+
+                processes.push({
+                    pid: pid,
+                    at: at,
+                    bt: bt,
+                    priority: priority,
+                    remaining_bt: bt, // Used for RR and Preemptive algorithms
+                    index: i // Original index for sorting results
+                });
+                
+                // Map colors to process IDs
+                if (!colorMap[pid]) {
+                    colorMap[pid] = colors[i % colors.length];
+                }
+            }
+            return processes;
+        }
+
+        /**
+         * Starts the simulation based on the selected algorithm.
+         */
+        function startSimulation() {
+            const algorithm = document.getElementById('algorithm').value;
+            let processes = getProcessesFromInput();
+            if (!processes) return; // Validation failed
+            if (processes.length === 0) {
+                showMessageBox("Please enter at least one process.");
+                return;
+            }
+
+            let result = { gantt: [], details: [] };
+            
+            try {
+                // Run simulation based on the algorithm
+                if (algorithm === 'FCFS') {
+                    result = simulateFCFS(processes);
+                } else if (algorithm === 'SJF') {
+                    result = simulateSJF(processes);
+                } else if (algorithm === 'Priority') {
+                    result = simulatePriority(processes);
+                } else if (algorithm === 'RR') {
+                    const quantum = parseInt(document.getElementById('quantum').value);
+                    if (isNaN(quantum) || quantum <= 0) {
+                        showMessageBox("Round Robin requires a valid Time Quantum (> 0).");
+                        return;
+                    }
+                    result = simulateRR(processes, quantum);
+                }
+                
+                displayResults(result);
+
+            } catch (error) {
+                console.error("Simulation error:", error);
+                showMessageBox("An unexpected error occurred during simulation: " + error.message);
+            }
+        }
+
+        /* --- SCHEDULING ALGORITHM IMPLEMENTATIONS --- */
+
+        /**
+         * FCFS (First-Come, First-Served) Algorithm
+         */
+        function simulateFCFS(processes) {
+            // 1. Sort by Arrival Time
+            processes.sort((a, b) => a.at - b.at);
+
+            let currentTime = 0;
+            const gantt = [];
+            const details = [];
+
+            for (const p of processes) {
+                // Handle Idle time if arrival is later than current time
+                if (currentTime < p.at) {
+                    gantt.push({ pid: 'Idle', start: currentTime, end: p.at });
+                    currentTime = p.at;
+                }
+
+                // Execution
+                const completionTime = currentTime + p.bt;
+                const turnaroundTime = completionTime - p.at;
+                const waitingTime = turnaroundTime - p.bt;
+
+                gantt.push({ pid: p.pid, start: currentTime, end: completionTime });
+
+                details.push({
+                    pid: p.pid,
+                    at: p.at,
+                    bt: p.bt,
+                    ct: completionTime,
+                    tat: turnaroundTime,
+                    wt: waitingTime
+                });
+                
+                currentTime = completionTime;
+            }
+
+            return { gantt, details };
+        }
+
+        /**
+         * Non-Preemptive SJF (Shortest Job First) Algorithm
+         */
+        function simulateSJF(processes) {
+            let currentTime = 0;
+            let completedProcesses = 0;
+            const n = processes.length;
+            const gantt = [];
+            const details = [];
+            const processList = processes.map(p => ({ ...p, isCompleted: false }));
+
+            while (completedProcesses < n) {
+                // Filter processes that have arrived and not completed
+                const availableProcesses = processList.filter(p => !p.isCompleted && p.at <= currentTime);
+
+                if (availableProcesses.length === 0) {
+                    // No process available, find the next arrival time
+                    const nextArrivals = processList.filter(p => !p.isCompleted).map(p => p.at);
+                    const nextArrival = nextArrivals.length > 0 ? Math.min(...nextArrivals) : undefined;
+                    
+                    if (nextArrival !== undefined && nextArrival > currentTime) {
+                        gantt.push({ pid: 'Idle', start: currentTime, end: nextArrival });
+                        currentTime = nextArrival;
+                    } else if (nextArrival === undefined) {
+                        break; // All processes completed
+                    }
+                    continue;
+                }
+
+                // Select the process with the shortest burst time (tie-breaker: AT, then PID)
+                availableProcesses.sort((a, b) => a.bt - b.bt || a.at - b.at || a.pid.localeCompare(b.pid));
+                const selectedProcess = availableProcesses[0];
+
+                // Execution
+                const startTime = currentTime;
+                const completionTime = currentTime + selectedProcess.bt;
+                
+                const turnaroundTime = completionTime - selectedProcess.at;
+                const waitingTime = turnaroundTime - selectedProcess.bt;
+
+                gantt.push({ pid: selectedProcess.pid, start: startTime, end: completionTime });
+                
+                // Mark process as completed
+                selectedProcess.isCompleted = true;
+                completedProcesses++;
+                currentTime = completionTime;
+
+                details.push({
+                    pid: selectedProcess.pid,
+                    at: selectedProcess.at,
+                    bt: selectedProcess.bt,
+                    ct: completionTime,
+                    tat: turnaroundTime,
+                    wt: waitingTime
+                });
+            }
+
+            // Sort results by original index
+            return { gantt, details: details.sort((a, b) => a.index - b.index) };
+        }
+
+        /**
+         * Non-Preemptive Priority Algorithm (Lower number means Higher Priority)
+         */
+        function simulatePriority(processes) {
+            let currentTime = 0;
+            let completedProcesses = 0;
+            const n = processes.length;
+            const gantt = [];
+            const details = [];
+            const processList = processes.map(p => ({ ...p, isCompleted: false }));
+
+            while (completedProcesses < n) {
+                // Filter processes that have arrived and not completed
+                const availableProcesses = processList.filter(p => !p.isCompleted && p.at <= currentTime);
+
+                if (availableProcesses.length === 0) {
+                    // No process available, find the next arrival time
+                    const nextArrivals = processList.filter(p => !p.isCompleted).map(p => p.at);
+                    const nextArrival = nextArrivals.length > 0 ? Math.min(...nextArrivals) : undefined;
+
+                    if (nextArrival !== undefined && nextArrival > currentTime) {
+                        gantt.push({ pid: 'Idle', start: currentTime, end: nextArrival });
+                        currentTime = nextArrival;
+                    } else if (nextArrival === undefined) {
+                        break;
+                    }
+                    continue;
+                }
+
+                // Select the process with the highest priority (lowest number, tie-breaker: AT, then PID)
+                availableProcesses.sort((a, b) => a.priority - b.priority || a.at - b.at || a.pid.localeCompare(b.pid));
+                const selectedProcess = availableProcesses[0];
+
+                // Execution
+                const startTime = currentTime;
+                const completionTime = currentTime + selectedProcess.bt;
+                
+                const turnaroundTime = completionTime - selectedProcess.at;
+                const waitingTime = turnaroundTime - selectedProcess.bt;
+
+                gantt.push({ pid: selectedProcess.pid, start: startTime, end: completionTime });
+                
+                // Mark process as completed
+                selectedProcess.isCompleted = true;
+                completedProcesses++;
+                currentTime = completionTime;
+
+                details.push({
+                    pid: selectedProcess.pid,
+                    at: selectedProcess.at,
+                    bt: selectedProcess.bt,
+                    ct: completionTime,
+                    tat: turnaroundTime,
+                    wt: waitingTime
+                });
+            }
+
+            // Sort results by original index
+            return { gantt, details: details.sort((a, b) => a.index - b.index) };
+        }
+
+        /**
+         * Round Robin Algorithm (Preemptive)
+         */
+        function simulateRR(processes, quantum) {
+            let currentTime = 0;
+            const gantt = [];
+            const finalDetails = [];
+            const processList = processes.map(p => ({ ...p, remaining_bt: p.bt, isCompleted: false, last_run: 0 }));
+            
+            // Queue for ready processes. Use a Map to manage the queue efficiently
+            const readyQueue = new Map();
+            
+            // Sort by Arrival Time
+            processList.sort((a, b) => a.at - b.at);
+            let arrivalIndex = 0;
+
+            // Function to add new arrivals to the queue
+            const addArrivalsToQueue = (time) => {
+                while (arrivalIndex < processList.length && processList[arrivalIndex].at <= time) {
+                    const p = processList[arrivalIndex];
+                    if (!readyQueue.has(p.pid)) {
+                        readyQueue.set(p.pid, p);
+                    }
+                    arrivalIndex++;
+                }
+            };
+            
+            // Initial arrivals
+            addArrivalsToQueue(currentTime);
+
+            while (finalDetails.length < processList.length) {
+
+                if (readyQueue.size === 0) {
+                    // No process in queue, check for next arrival
+                    if (arrivalIndex < processList.length) {
+                        const nextArrival = processList[arrivalIndex].at;
+                        gantt.push({ pid: 'Idle', start: currentTime, end: nextArrival });
+                        currentTime = nextArrival;
+                        addArrivalsToQueue(currentTime);
+                        continue;
+                    } else {
+                        break; // All processes completed
+                    }
+                }
+
+                // Select process from the front of the queue (FIFO logic using Map keys)
+                const pidToRun = readyQueue.keys().next().value;
+                const currentProcess = readyQueue.get(pidToRun);
+                readyQueue.delete(pidToRun); // Remove from front
+
+                const executionTime = Math.min(currentProcess.remaining_bt, quantum);
+                const startTime = currentTime;
+                const endTime = currentTime + executionTime;
+
+                gantt.push({ pid: currentProcess.pid, start: startTime, end: endTime });
+                
+                currentProcess.remaining_bt -= executionTime;
+                currentTime = endTime;
+                
+                // Add any new arrivals that occurred during this time slice
+                addArrivalsToQueue(currentTime);
+
+                // On completion
+                if (currentProcess.remaining_bt === 0) {
+                    currentProcess.isCompleted = true;
+                    currentProcess.ct = currentTime;
+                    currentProcess.tat = currentProcess.ct - currentProcess.at;
+                    currentProcess.wt = currentProcess.tat - currentProcess.bt;
+                    finalDetails.push(currentProcess);
+                } else {
+                    // If not completed, add back to the end of the queue
+                    // Since a Map is used, simply re-setting it adds it to the end
+                    readyQueue.set(currentProcess.pid, currentProcess);
+                }
+                
+                // Consolidate consecutive segments for the same process (improves Gantt chart readability)
+                if (gantt.length > 1) {
+                    const last = gantt[gantt.length - 1];
+                    const secondLast = gantt[gantt.length - 2];
+                    if (last.pid === secondLast.pid && last.pid !== 'Idle') {
+                        secondLast.end = last.end;
+                        gantt.pop();
+                    }
+                }
+            }
+
+            // Sort results by original index
+            return { gantt, details: finalDetails.sort((a, b) => a.index - b.index) };
+        }
+
+        /* --- RESULT DISPLAY AND CALCULATION --- */
+
+        /**
+         * Displays the Gantt chart and calculated metrics.
+         * @param {Object} result - The result object containing gantt and details.
+         */
+        function displayResults(result) {
+            const ganttChartDiv = document.getElementById('gantt-chart');
+            const ganttTimeLineDiv = document.getElementById('gantt-time-line');
+            const detailsTableBody = document.getElementById('details-table-body');
+            const resultsContainer = document.getElementById('results-container');
+
+            ganttChartDiv.innerHTML = '';
+            ganttTimeLineDiv.innerHTML = '';
+            detailsTableBody.innerHTML = '';
+            resultsContainer.classList.remove('hidden');
+
+            // 1. Create Gantt Chart
+            const totalTime = result.gantt.length > 0 ? result.gantt[result.gantt.length - 1].end : 0;
+            
+            // Add the first timestamp for the timeline
+            ganttTimeLineDiv.innerHTML += `<div class="text-left" style="min-width: 30px; margin-left: -5px;">0</div>`;
+
+            let cumulativeWidth = 0;
+
+            result.gantt.forEach((segment) => {
+                const duration = segment.end - segment.start;
+                // Calculate percentage width relative to the total time
+                const widthPercentage = totalTime > 0 ? (duration / totalTime) * 100 : 0;
+
+                // Gantt Segment
+                const segmentDiv = document.createElement('div');
+                segmentDiv.className = 'gantt-segment rounded-sm';
+                segmentDiv.style.width = `${widthPercentage}%`;
+                segmentDiv.style.backgroundColor = segment.pid === 'Idle' ? '#9ca3af' : colorMap[segment.pid]; // gray-400 for Idle
+                segmentDiv.style.minWidth = '40px'; // Minimum width for visibility on small screens
+                segmentDiv.textContent = segment.pid;
+                ganttChartDiv.appendChild(segmentDiv);
+
+            });
+            
+            // Fix for timeline layout: we need to use relative positioning based on the total time to align stamps correctly.
+            // Clear the original timeline and rebuild with correct positioning
+            ganttTimeLineDiv.innerHTML = '';
+            ganttTimeLineDiv.classList.add('relative', 'h-8'); // Add relative positioning for absolute children
+            
+            // Always add 0 stamp
+            const stampZero = document.createElement('div');
+            stampZero.className = 'absolute';
+            stampZero.style.left = `0%`;
+            stampZero.style.top = '0';
+            stampZero.textContent = '0';
+            ganttTimeLineDiv.appendChild(stampZero);
+
+            let currentGanttTime = 0;
+            result.gantt.forEach(segment => {
+                currentGanttTime = segment.end;
+                const stampPosition = totalTime > 0 ? (currentGanttTime / totalTime) * 100 : 0;
+
+                // Add stamps only for non-zero end times
+                if (currentGanttTime > 0) {
+                    const timeStampDiv = document.createElement('div');
+                    timeStampDiv.className = 'absolute transform -translate-x-1/2 text-xs font-mono';
+                    timeStampDiv.style.left = `${stampPosition}%`;
+                    timeStampDiv.style.top = '0';
+                    timeStampDiv.textContent = currentGanttTime;
+                    ganttTimeLineDiv.appendChild(timeStampDiv);
+                }
+            });
+
+
+            // 2. Calculate Metrics
+            let totalWaitingTime = 0;
+            let totalTurnaroundTime = 0;
+
+            result.details.forEach(p => {
+                totalWaitingTime += p.wt;
+                totalTurnaroundTime += p.tat;
+
+                // Details Table
+                const row = detailsTableBody.insertRow();
+                row.className = 'hover:bg-gray-50 transition duration-100';
+                row.insertCell().textContent = p.pid;
+                row.insertCell().textContent = p.at;
+                row.insertCell().textContent = p.bt;
+                row.insertCell().textContent = p.ct;
+                row.insertCell().textContent = p.tat.toFixed(2);
+                row.insertCell().textContent = p.wt.toFixed(2);
+            });
+
+            const numProcesses = result.details.length;
+            const avgWaitingTime = numProcesses > 0 ? totalWaitingTime / numProcesses : 0;
+            const avgTurnaroundTime = numProcesses > 0 ? totalTurnaroundTime / numProcesses : 0;
+            const throughput = totalTime > 0 ? (numProcesses / totalTime) : 0;
+
+            // 3. Display Metrics
+            document.getElementById('avg-waiting-time').textContent = avgWaitingTime.toFixed(2);
+            document.getElementById('avg-turnaround-time').textContent = avgTurnaroundTime.toFixed(2);
+            document.getElementById('throughput').textContent = throughput.toFixed(2) + ' Proc/Unit Time';
+            
+            // Scroll to the beginning of the Gantt chart
+            ganttChartDiv.scrollLeft = 0;
+        }
+        
+        /**
+         * Shows a custom message box (replaces standard alert).
+         * @param {string} message - The error message to display.
+         */
+        function showMessageBox(message) {
+            document.getElementById('message-content').textContent = message;
+            document.getElementById('message-box').classList.remove('hidden');
+        }
+
+        /**
+         * Closes the custom message box.
+         */
+        function closeMessageBox() {
+            document.getElementById('message-box').classList.add('hidden');
+        }
+
+        // Initialization on page load
+        window.onload = () => {
+            adjustProcessRows(document.getElementById('num-processes-input').value); // Generate initial rows
+            toggleQuantumAndPriorityInputs(); // Hide quantum and priority inputs initially
+        };
+
+    </script>
+</body>
+</html>
